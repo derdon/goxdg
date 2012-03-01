@@ -7,10 +7,10 @@ import (
 
 // make sure that the resulting path exists and mkdir missing dirs, if
 // necessary
-func makeEnvPathFunc(envVariable string) func(string) (string, error) {
-	return func(envPath string) (string, error) {
+func makeEnvPathFunc(envVariable string) func(string) error {
+	return func(envPath string) error {
 		absPath := path.Join(envVariable, envPath)
-		return absPath, os.MkdirAll(absPath, 0700)
+		return os.MkdirAll(absPath, 0700)
 	}
 }
 
