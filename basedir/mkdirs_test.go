@@ -3,15 +3,25 @@ package basedir
 import (
 	"testing"
 	"os"
+	"fmt"
+	"io/ioutil"
 )
 
 func TestMakeEnvPathFunc(t *testing.T) {
-	fun := makeEnvPathFunc("/tmp")
-	err := fun("foo/bar")
+	tmpDir := os.TempDir()
+	fun := makeEnvPathFunc(tmpDir)
+	dirName, err := ioutil.TempDir(tmpDir, "")
+	defer os.Remove(dirName)
+	if err != nil {
+		t.Errorf(
+			"couldn't create temporary directory %s. Reason: %s",
+			dirName, err)
+	}
+	err = fun(dirName)
 	if err != nil {
 		t.Errorf("expected err to be nil, got %s", err)
 	}
-	f, err := os.Open("/tmp/foo/bar")
+	f, err := os.Open(fmt.Sprintf("%s/%s", tmpDir, dirName))
 	if err != nil {
 		t.Errorf("file couldn't be opened, got %v", err)
 	}
@@ -20,6 +30,6 @@ func TestMakeEnvPathFunc(t *testing.T) {
 		t.Errorf("couldn't get file info, got %v", err)
 	}
 	if !fileInfo.IsDir() {
-		t.Errorf("touched file /tmp/foo/bar is not a directory")
+		t.Errorf("touched file %s/%s is not a directory", tmpDir, dirName)
 	}
 }
