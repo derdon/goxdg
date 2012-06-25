@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"errors"
+	"io/ioutil"
 )
 
 // this is the printable part of the ASCII characters minus the brackets [ and ]
@@ -15,35 +16,53 @@ type Entry struct {
 }
 
 type Group []Entry
-//type Entries []Entry
 
-// key is the group header
-//type Group map[string]Entries
+type Entries map[string]Group
 
-//type DesktopEntry []Group
-// FIXME: ponder about the following line!
-type DesktopEntry map[string]Group
+func (entries Entries) String() (out string) {
+	for groupName, group := range entries {
+		out += fmt.Sprintf("[%s]\n", groupName)
+		for _, entry := range group {
+			out += fmt.Sprintf("%s = %s\n", entry.Key, entry.Value)
+		}
+	}
+	return strings.TrimSpace(out)
+}
 
 // FIXME: this function is fundamentally broken! FIX IT!
-func ParseDesktopEntry(input string) (DesktopEntry, error) {
-	// iterate over each line
-	// if a group header occurs, make a new group and collect its entries
-	// until another group header occurs. repeat util EOF or error.
-	dEntry := DesktopEntry{}
+func ParseDesktopEntryString(input string) (Entries, error) {
+	entries := Entries{}
 	group := Group{}
 	groupName := ""
+	isFirstGroup := true
 	lines := strings.Split(input, "\n")
+	// iterate over each line
+	// if a group header occurs, make a new group and collect its entries
+	// until another group header occurs.
 	for lineno, line := range lines {
 		switch {
 		case isGroupHeader(line):
 			// add all gathered entries to the yet-current group if
 			// this line does not introduce the *first* group
 			if groupName != "" {
-				dEntry[groupName] = group
+				entries[groupName] = group
+			} else {
+				isFirstGroup = false
 			}
 			// remove the brackets from the line to get the group name
 			groupName = line[1:len(line)-1]
+			// the spec says that the first group must be named "Desktop Entry"
+			if isFirstGroup && groupName != "Desktop Entry" {
+				errmsg := fmt.Sprintf(
+					"first group name is '%s', must be 'Desktop Entry'.",
+					groupName)
+				return entries, errors.New(errmsg)
+			}
+			// make a new empty group where the following found entries will be
+			// appended to
 			group = Group{}
+			// initialize the new group name with this new empty group
+			entries[groupName] = group
 		//case strings.HasPrefix(line, "#"), line == "":
 		case strings.HasPrefix(line, "#"), strings.TrimSpace(line) == "":
 			// line is a comment or an empty line, ignore it
@@ -53,25 +72,32 @@ func ParseDesktopEntry(input string) (DesktopEntry, error) {
 			// form. otherwise it's a parsing error
 			entry, err := parseKeyValue(line)
 			if err != nil {
-				// not a valid line
-				errmsg := fmt.Sprintf(
-					"invalid input line: %s (line %d)",
-					line, lineno)
-				return DesktopEntry{}, errors.New(errmsg)
+				return entries, err
 			}
 			if groupName == "" {
 				// key-value line is valid, but the group
 				// header is missing
 				errmsg := fmt.Sprintf(
 					"missing group header before " +
-					"entry declarations (line %d)", lineno)
-				return DesktopEntry{}, errors.New(errmsg)
+					"entry declarations (line %d)", lineno + 1)
+				return entries, errors.New(errmsg)
 			}
 			group = append(group, entry)
-			//group[groupName] = append(group[groupName], entry)
 		}
 	}
-	return dEntry, nil
+	// if there was only one group, the group entries have to be assigned here
+	if groupName != "" {
+		entries[groupName] = group
+	}
+	return entries, nil
+}
+
+func ParseDesktopEntryFile(filename string) (entries Entries, err error) {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	return ParseDesktopEntryString(string(content))
 }
 
 func isGroupHeader(line string) bool {
